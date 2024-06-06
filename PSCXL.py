@@ -1,12 +1,11 @@
 import tkinter as tk
 from tkinter import ttk
-from openpyxl import load_workbook
 
 class PSCXL:
     def __init__(self, root):
         self.root = root
         self.root.title("PSCXL")
-
+        
         # Create a Treeview widget
         self.tree = ttk.Treeview(root)
 
@@ -24,6 +23,11 @@ class PSCXL:
         self.tree.heading('Label Size', text='Label Size', anchor=tk.W)
         self.tree.heading('Text', text='Text', anchor=tk.W)
         self.tree.heading('Quantity', text='Quantity', anchor=tk.CENTER)
+
+        # Add sample data
+        self.tree.insert(parent='', index='end', iid=0, text="1", values=("Small", "Label 1", 100))
+        self.tree.insert(parent='', index='end', iid=1, text="2", values=("Medium", "Label 2", 200))
+        self.tree.insert(parent='', index='end', iid=2, text="3", values=("Large", "Label 3", 150))
 
         # Pack Treeview widget
         self.tree.pack(pady=20)
@@ -61,26 +65,6 @@ class PSCXL:
         # Create a context menu
         self.context_menu = tk.Menu(root, tearoff=0)
         self.context_menu.add_command(label="Remove Label", command=self.remove_label)
-
-        # Load data from Excel file
-        self.load_data_from_excel("24-0005E2.xlsx")
-
-    def load_data_from_excel(self, filename):
-        workbook = load_workbook(filename)
-        sheet_mappings = {
-            "Wire": "PANEL",
-            "Square": ".5X.5 Labels",
-            "Rectangle": ".5X1 Labels"
-        }
-        for label_size, sheet_name in sheet_mappings.items():
-            sheet = workbook[sheet_name]
-            for row in sheet.iter_rows(min_row=2, values_only=True):
-                self.add_treeview_item(label_size, row)
-
-    def add_treeview_item(self, label_size, row):
-        next_id = len(self.tree.get_children())
-        text, quantity = row
-        self.tree.insert(parent='', index='end', iid=next_id, text=str(next_id + 1), values=(label_size, text, quantity))
 
     def add_label(self):
         label_size = self.label_size_combo.get()

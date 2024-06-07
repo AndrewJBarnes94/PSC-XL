@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, simpledialog
+from tkinter import ttk, filedialog, messagebox
 import openpyxl
 from collections import defaultdict
 import sqlite3
@@ -33,14 +33,15 @@ class PSCXL:
         self.db_tree = ttk.Treeview(root)
 
         # Define columns for the database Treeview
-        self.db_tree['columns'] = ('Workbook', 'Sheet', 'Value', 'Quantity')
+        self.db_tree['columns'] = ('Workbook', 'Sheet', 'Value', 'Quantity', 'Stacked')
 
         # Format columns
         self.db_tree.column("#0", width=0, stretch=tk.NO)  # Hide the first column
-        self.db_tree.column('Workbook', anchor=tk.W, width=200)
-        self.db_tree.column('Sheet', anchor=tk.W, width=200)
+        self.db_tree.column('Workbook', anchor=tk.W, width=150)
+        self.db_tree.column('Sheet', anchor=tk.W, width=150)
         self.db_tree.column('Value', anchor=tk.W, width=250)
         self.db_tree.column('Quantity', anchor=tk.CENTER, width=80)
+        self.db_tree.column('Stacked', anchor=tk.CENTER, width=80)
 
         # Create headings
         self.db_tree.heading("#0", text="", anchor=tk.W)
@@ -48,6 +49,7 @@ class PSCXL:
         self.db_tree.heading('Sheet', text='Sheet', anchor=tk.W)
         self.db_tree.heading('Value', text='Value', anchor=tk.W)
         self.db_tree.heading('Quantity', text='Quantity', anchor=tk.CENTER)
+        self.db_tree.heading('Stacked', text='Stacked', anchor=tk.CENTER)
 
         # Pack Treeview widget
         self.db_tree.pack(pady=20)
@@ -69,6 +71,7 @@ class PSCXL:
                 sheet_name TEXT, 
                 value TEXT, 
                 quantity INTEGER,
+                stacked INTEGER,
                 PRIMARY KEY (workbook_name, sheet_name, value)
             )
         ''')
@@ -95,10 +98,11 @@ class PSCXL:
                 sheet_data = self.read_sheet(sheet)
                 duplicate_counts = self.count_duplicates(sheet_data)
                 for value, count in duplicate_counts.items():
+                    stacked = 1 if " " in value else 0  # Assume values with spaces are stacked
                     self.cursor.execute('''
-                        INSERT OR IGNORE INTO workbooks (workbook_name, sheet_name, value, quantity) 
-                        VALUES (?, ?, ?, ?)
-                    ''', (workbook_base_name, sheet_name, value, count))
+                        INSERT OR IGNORE INTO workbooks (workbook_name, sheet_name, value, quantity, stacked) 
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (workbook_base_name, sheet_name, value.strip(), count, stacked))
             self.conn.commit()
             self.read_database()
 
@@ -159,7 +163,9 @@ class PSCXL:
 
         # Insert data into the database Treeview widget
         for row in rows:
-            self.db_tree.insert(parent='', index='end', values=row)
+            display_row = list(row)
+            display_row[2] = display_row[2].replace(" " * 10, " ")  # Show single value without extra spaces
+            self.db_tree.insert(parent='', index='end', values=display_row)
 
     def clear_table(self):
         for item in self.db_tree.get_children():
@@ -190,9 +196,9 @@ class PSCXL:
             # Update the database
             self.cursor.execute('''
                 UPDATE workbooks
-                SET value = ?, quantity = ?
+                SET value = ?, quantity = ?, stacked = ?
                 WHERE workbook_name = ? AND sheet_name = ? AND value = ?
-            ''', (new_values[2], new_values[3], current_values[0], current_values[1], current_values[2]))
+            ''', (new_values[2], new_values[3], new_values[4], current_values[0], current_values[1], current_values[2]))
             self.conn.commit()
             self.update_table()
 
@@ -206,13 +212,13 @@ class PSCXL:
             return
 
         # Get new values
-        new_values = self.edit_popup([selected_workbook, selected_sheet, "", 0], new_row=True)
+        new_values = self.edit_popup([selected_workbook, selected_sheet, "", 0, 0], new_row=True)
         if new_values:
             # Insert into the database
             self.cursor.execute('''
-                INSERT INTO workbooks (workbook_name, sheet_name, value, quantity)
-                VALUES (?, ?, ?, ?)
-            ''', (new_values[0], new_values[1], new_values[2], new_values[3]))
+                INSERT INTO workbooks (workbook_name, sheet_name, value, quantity, stacked)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (new_values[0], new_values[1], new_values[2], new_values[3], new_values[4]))
             self.conn.commit()
             self.update_table()
 
@@ -236,12 +242,16 @@ class PSCXL:
         quantity_entry.grid(row=3, column=1, padx=10, pady=10)
         quantity_entry.insert(0, values[3])
 
+        stacked_var = tk.IntVar(value=values[4])
+        stacked_check = tk.Checkbutton(popup, text="Stacked", variable=stacked_var)
+        stacked_check.grid(row=4, column=0, columnspan=2, pady=10)
+
         def on_submit():
-            popup.new_values = [values[0], values[1], value_entry.get(), int(quantity_entry.get())]
+            popup.new_values = [values[0], values[1], value_entry.get(), int(quantity_entry.get()), stacked_var.get()]
             popup.destroy()
 
         submit_button = tk.Button(popup, text="Submit", command=on_submit)
-        submit_button.grid(row=4, column=0, columnspan=2, pady=10)
+        submit_button.grid(row=5, column=0, columnspan=2, pady=10)
 
         popup.transient(self.root)
         popup.grab_set()
@@ -265,14 +275,15 @@ class PSCXL:
                 sheets = set(row[0] for row in self.cursor.execute('SELECT DISTINCT sheet_name FROM workbooks WHERE workbook_name = ?', (workbook_name,)).fetchall())
                 for sheet_name in sheets:
                     new_ws = new_wb.create_sheet(title=sheet_name)
-                    new_ws.append(['Value', 'Quantity'])
-                    rows = self.cursor.execute('SELECT value, quantity FROM workbooks WHERE workbook_name = ? AND sheet_name = ?', (workbook_name, sheet_name)).fetchall()
-                    for row in rows:
-                        new_ws.append(row)
+                    rows = self.cursor.execute('SELECT value, quantity, stacked FROM workbooks WHERE workbook_name = ? AND sheet_name = ?', (workbook_name, sheet_name)).fetchall()
+                    for value, quantity, stacked in rows:
+                        for _ in range(quantity):
+                            if stacked:
+                                value = value.replace(" ", " " * 10)  # Ensure 10 spaces between stacked items
+                            new_ws.append([value])
             # Save the new workbook
             new_wb.save(save_path)
             messagebox.showinfo("Info", "Data successfully exported to Excel")
-
 
 if __name__ == "__main__":
     root = tk.Tk()

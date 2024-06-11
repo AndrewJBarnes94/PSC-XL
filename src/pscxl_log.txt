@@ -1,0 +1,6 @@
+2024-06-11 16:23:42,116 - DEBUG - Initialized PSCXL_GUI
+2024-06-11 16:23:42,131 - DEBUG - Reading database
+2024-06-11 16:23:42,131 - DEBUG - Updating sheet selector
+2024-06-11 16:23:42,131 - DEBUG - Clearing table
+2024-06-11 16:23:45,438 - DEBUG - Updating sheet selector
+2024-06-11 16:23:45,438 - DEBUG - Clearing table
